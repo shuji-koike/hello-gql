@@ -11,14 +11,17 @@ var db = mysql.createPool({
 });
 
 async function table(name: string) {
-  const fields = {};
-  const [rows] = await db.query<RowDataPacket[]>(`DESCRIBE ${name}`);
-  rows.forEach(e => {
-    fields[e.Field] = {
-      type: getNullable(e, getType(e))
-    };
+  return new graphql.GraphQLObjectType({
+    name,
+    fields: Object.assign(
+      {},
+      ...(await db.query<RowDataPacket[]>(`DESCRIBE ${name}`))[0].map(e => ({
+        [e.Field]: {
+          type: getNullable(e, getType(name, e))
+        }
+      }))
+    )
   });
-  return new graphql.GraphQLObjectType({ name, fields });
 }
 
 async function tableField(name: string) {
@@ -31,19 +34,36 @@ async function tableField(name: string) {
       offset: { type: graphql.GraphQLInt }
     },
     async resolve() {
-      return await db.query(`SELECT * FROM ${name}`);
+      const [rows] = await db.query(`SELECT * FROM ${name}`);
+      return rows;
     }
   };
 }
 
-function getType(e) {
+function getType(name: string, e: any): graphql.GraphQLType {
   if (/^(big)?int/.test(e.Type)) return graphql.GraphQLInt;
   if (/^(var)?char/.test(e.Type)) return graphql.GraphQLString;
+  if (/^enum/.test(e.Type)) return getEnum(name, e);
   return graphql.GraphQLString;
 }
 
-function getNullable(e, x: graphql.GraphQLScalarType) {
+function getNullable(e: any, x: graphql.GraphQLType): graphql.GraphQLType {
   return e.Null == "NO" ? new graphql.GraphQLNonNull(x) : x;
+}
+
+function getEnum(name: string, e: any): graphql.GraphQLEnumType {
+  return new graphql.GraphQLEnumType({
+    name: `${name}_${e.Field}`,
+    values: Object.assign(
+      {},
+      .../\(([^)]+)\)/
+        .exec(e.Type)
+        ?.pop()
+        ?.split(",")
+        .map(e => JSON.parse(e.split("'").join('"')))
+        .map(e => ({ [e]: { value: e } }))
+    )
+  });
 }
 
 async function getQuery() {
@@ -102,10 +122,8 @@ const resolvers = {
         typeDefs,
         resolvers
       });
-
-  const server = new ApolloServer({ schema });
-
   const app = express();
+  const server = new ApolloServer({ schema });
   server.applyMiddleware({ app, path: "/graphql" });
   app.listen(4000);
 })();
