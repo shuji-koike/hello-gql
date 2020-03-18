@@ -1,11 +1,21 @@
 type Query {
   rev: String
+  accounts: [Account]
+  campaign(uid: String, id: Int): Campaign
+  campaigns(limit: Int, offset: Int): [Campaign]
+  categories: [Category]
+}
+
+type Account {
+  id: Int
+  uid: ID!
+  name: String
   campaigns(limit: Int, offset: Int): [Campaign]
 }
 
 type Campaign {
   id: Int!
-  uid: String!
+  uid: ID!
   name: String!
   categories: [Category]
 }
