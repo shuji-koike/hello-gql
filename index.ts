@@ -1,17 +1,26 @@
-import express from "express";
 import * as graphql from "graphql";
 import {
   makeExecutableSchema,
   buildSchemaFromTypeDefinitions,
   addSchemaLevelResolveFunction
 } from "graphql-tools";
+import { importSchema } from "graphql-import";
+import express from "express";
 import { ApolloServer } from "apollo-server-express";
 import mysql, { RowDataPacket } from "mysql2/promise";
-import { importSchema } from "graphql-import";
+import Knex from "knex";
 
-var db = mysql.createPool({
+const db = mysql.createPool({
   user: "root",
   database: "cirqua_csl"
+});
+
+const knex = Knex({
+  client: "mysql2",
+  connection: {
+    user: "root",
+    database: "cirqua_csl"
+  }
 });
 
 async function table(name: string) {
@@ -101,6 +110,9 @@ const resolvers = {
 };
 
 async function select(table: string, limit: number = 1000, offset: number = 0) {
+  if ([true, false][0]) {
+    return await knex.select().from(table);
+  }
   const query = `SELECT * FROM ${table} LIMIT ${limit} OFFSET ${offset}`;
   console.log(query);
   const [rows] = await db.query<RowDataPacket[]>(query);
