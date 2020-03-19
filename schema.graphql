@@ -5,6 +5,7 @@ directive @belongsTo(table: String) on FIELD_DEFINITION
 type Query {
   rev: String @rev
   accounts(limit: Int, offset: Int): [Account] @table
+  accounts2(limit: Int, offset: Int): [Account] @table(table: "accounts")
   roles(limit: Int, offset: Int): [Role] @table
   campaigns(limit: Int, offset: Int): [Campaign] @table
   categories(limit: Int, offset: Int): [Category] @table

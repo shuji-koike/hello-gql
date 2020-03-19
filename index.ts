@@ -125,18 +125,20 @@ async function batchSelect<Key, Row>(
   column: string,
   key: Key
 ): Promise<Row> {
-  if (map.get(key)?.resolved === true) return map.get(key).row;
+  console.log("batchSelect", table, key, map.get(key));
+  if (map.get(key)?.resolved) return map.get(key).row;
   return new Promise<Row>(resolve => {
     map.set(key, { resolve });
     setTimeout(async () => {
       if (map.get(key).resolved !== undefined) return;
-      map.forEach(v => (v.resolved = false));
-      const keys = Array.from(map.keys());
+      const keys = Array.from(map.entries())
+        .filter(([, v]) => v.resolved === undefined)
+        .map(([k, v]) => (v.resolved = false) || k);
       const rows = await select<Row>(table, q => q.whereIn(column, keys));
-      keys.forEach(e => {
-        const memo = map.get(e);
+      keys.forEach(k => {
+        const memo = map.get(k);
         memo.resolved = true;
-        memo.row = rows.find(e => e[column] == key);
+        memo.row = rows.find(e => e[column] == k);
         memo.resolve(memo.row);
       });
     });
@@ -151,7 +153,7 @@ async function batchSelect2<Key, Row>(
 ) {
   batch(map, key, async keys => {
     const rows = await select<Row>(table, q => q.whereIn(column, keys));
-    keys.forEach(key => map.get(key)?.(rows.find(e => e[column] == key)));
+    keys.forEach(k => map.get(k)?.(rows.find(row => row[column] == k)));
   });
 }
 
@@ -166,8 +168,14 @@ async function batch<Key, Row>(
   return new Promise<Row>(resolve => {
     map.set(key, undefined);
     setTimeout(async () => {
+      console.log(table, key);
       if (map.get(key)) return;
-      map.forEach((v, k) => map.set(k, resolve));
+      map.forEach((v, k) =>
+        map.set(k, (row: Row) => {
+          resolve(row);
+          map.delete(k);
+        })
+      );
       await load(Array.from(map.keys()), map);
     });
   });
@@ -208,11 +216,12 @@ function buildResolver(
         q.limit(args.limit || 1000).offset(args.offset || 0)
       );
     } else {
+      const column = "id";
       return batchSelect(
-        context[`_loader_map_${table}`] ||
-          (context[`_loader_map_${table}`] = new Map()),
+        context[`_loader_map_${table}_${column}`] ||
+          (context[`_loader_map_${table}_${column}`] = new Map()),
         table,
-        "id",
+        column,
         obj[`${fieldName}_id`]
       );
     }
