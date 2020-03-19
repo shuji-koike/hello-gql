@@ -9,6 +9,7 @@ import express from "express";
 import { ApolloServer } from "apollo-server-express";
 import mysql, { RowDataPacket } from "mysql2/promise";
 import Knex from "knex";
+import Dataloader from "dataloader";
 
 const db = mysql.createPool({
   user: "root",
@@ -210,20 +211,18 @@ function buildResolver(
   );
   if (!directive) return;
   const table = getDirectiveValue(directive, "table") || fieldName;
+  const primaryKey = getDirectiveValue(directive, "key") || "id";
+  const foreignKey = getDirectiveValue(directive, "on") || `${fieldName}_id`;
+  const dataloader = new Dataloader(keys =>
+    select(table, q => q.whereIn(primaryKey, keys))
+  );
   field.resolve = (obj, args, context, info) => {
     if (field.type instanceof graphql.GraphQLList) {
       return select(table, q =>
         q.limit(args.limit || 1000).offset(args.offset || 0)
       );
     } else {
-      const column = "id";
-      return batchSelect(
-        context[`_loader_map_${table}_${column}`] ||
-          (context[`_loader_map_${table}_${column}`] = new Map()),
-        table,
-        column,
-        obj[`${fieldName}_id`]
-      );
+      return dataloader.load(obj[foreignKey]);
     }
   };
 }
