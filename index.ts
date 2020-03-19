@@ -103,36 +103,42 @@ const resolvers = {
 async function select(table: string, limit: number = 1000, offset: number = 0) {
   const query = `SELECT * FROM ${table} LIMIT ${limit} OFFSET ${offset}`;
   console.log(query);
-  const [rows] = await db.query(query);
+  const [rows] = await db.query<RowDataPacket[]>(query);
   return rows;
 }
 
 function buildSchema() {
   const schema = buildSchemaFromTypeDefinitions(typeDefs);
-  const typeMap = schema.getQueryType();
-  const fields = typeMap.getFields();
-  Object.keys(fields).forEach(fieldName => {
-    if (fields[fieldName].resolve) return;
-    const directive = fields[fieldName].astNode.directives.find(
-      e => e.name.value == "table"
-    );
-    if (!directive) return;
-    let { type } = fields[fieldName];
-    if (type instanceof graphql.GraphQLList) {
-      type = type.ofType as graphql.GraphQLOutputType;
+  const typeMap = schema.getTypeMap();
+  Object.keys(typeMap).forEach(typeName => {
+    if (!(typeMap[typeName] instanceof graphql.GraphQLObjectType)) return;
+    const type = typeMap[typeName];
+    if (type instanceof graphql.GraphQLObjectType) {
+      const fields = type.getFields();
+      Object.keys(fields).forEach(fieldName => {
+        if (fields[fieldName].resolve) return;
+        const directive = fields[fieldName].astNode.directives.find(e =>
+          ["table", "belongsTo"].includes(e.name.value)
+        );
+        if (!directive) return;
+        const table =
+          directive.arguments
+            .filter(e => e.name.value === "table")
+            .map(e => e.value.kind === "StringValue" && e.value.value)
+            .pop() || fieldName;
+        fields[fieldName].resolve = (obj, args, context, info) => {
+          console.log(fields[fieldName].type, obj, args);
+          if (fields[fieldName].type instanceof graphql.GraphQLList) {
+            return select(table, args.limit, args.offset);
+          } else {
+            return select(table, 1, 0).then(e => e.shift());
+          }
+        };
+      });
     }
-    const table =
-      directive.arguments
-        .filter(e => e.name.value === "table")
-        .map(e => e.value.kind === "StringValue" && e.value.value)
-        .pop() || fieldName;
-    fields[fieldName].resolve = (obj, args, context, info) => {
-      console.log(type, obj, args);
-      return select(table, args.limit, args.offset);
-    };
   });
   addSchemaLevelResolveFunction(schema, (obj, args, context, info) => {
-    console.log(obj, args, context, info.path);
+    // console.log(obj, args, context, info.path);
   });
   return schema;
 }

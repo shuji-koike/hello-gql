@@ -1,18 +1,30 @@
 directive @rev on FIELD_DEFINITION
-directive @table(schema: String, table: String) on FIELD_DEFINITION
+directive @table(table: String) on FIELD_DEFINITION
+directive @belongsTo(table: String) on FIELD_DEFINITION
 
 type Query {
   rev: String @rev
-  accounts: [Account] @table
+  accounts(limit: Int, offset: Int): [Account] @table
+  roles(limit: Int, offset: Int): [Role] @table
   campaigns(limit: Int, offset: Int): [Campaign] @table
   categories(limit: Int, offset: Int): [Category] @table
 }
 
 type Account {
-  id: Int
+  id: Int!
   uid: ID!
   name: String
+  role_id: Int!
+  role: Role! @belongsTo(table: "roles")
   campaigns(limit: Int, offset: Int): [Campaign]
+}
+
+type Role {
+  id: Int!
+  uid: ID!
+  name: String!
+  owner_id: Int!
+  version_no: Int!
 }
 
 type Campaign {
