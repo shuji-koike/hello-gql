@@ -109,42 +109,66 @@ const resolvers = {
   }
 };
 
-async function select(
+async function select<T>(
   table: string,
   ...fn: ((q: Knex.QueryBuilder) => Knex.QueryBuilder)[]
-) {
+): Promise<T[]> {
   let select = knex.select().from(table);
   fn.filter(x => x).forEach(fn => (select = fn(select)));
-  if ([true, false][0]) {
-    console.log(select.toString());
-    return await select;
-  }
-  const query = `SELECT * FROM ${table}`;
-  console.log(query);
-  const [rows] = await db.query<RowDataPacket[]>(query);
-  return rows;
+  console.debug(select.toString());
+  return select;
 }
 
-async function loader<Row, Key = number | string>(
+async function batchSelect<Key, Row>(
   map: Map<Key, { resolved?: boolean; resolve: (x: Row) => void; row?: Row }>,
   table: string,
   column: string,
   key: Key
 ): Promise<Row> {
-  if (map.has(key) && map.get(key).resolved === true) return map.get(key).row;
+  if (map.get(key)?.resolved === true) return map.get(key).row;
   return new Promise<Row>(resolve => {
     map.set(key, { resolve });
     setTimeout(async () => {
       if (map.get(key).resolved !== undefined) return;
       map.forEach(v => (v.resolved = false));
       const keys = Array.from(map.keys());
-      const rows = await select(table, q => q.whereIn(column, keys));
+      const rows = await select<Row>(table, q => q.whereIn(column, keys));
       keys.forEach(e => {
         const memo = map.get(e);
         memo.resolved = true;
         memo.row = rows.find(e => e[column] == key);
         memo.resolve(memo.row);
       });
+    });
+  });
+}
+
+async function batchSelect2<Key, Row>(
+  map: Map<Key, (row: Row) => void>,
+  table: string,
+  column: string,
+  key: Key
+) {
+  batch(map, key, async keys => {
+    const rows = await select<Row>(table, q => q.whereIn(column, keys));
+    keys.forEach(key => map.get(key)?.(rows.find(e => e[column] == key)));
+  });
+}
+
+async function batch<Key, Row>(
+  map: Map<Key, (row: Row) => void>,
+  key: Key,
+  load: (
+    keys: Key[],
+    data: Map<Key, ((row: Row) => void) | Row | null | undefined>
+  ) => Promise<void>
+): Promise<Row> {
+  return new Promise<Row>(resolve => {
+    map.set(key, undefined);
+    setTimeout(async () => {
+      if (map.get(key)) return;
+      map.forEach((v, k) => map.set(k, resolve));
+      await load(Array.from(map.keys()), map);
     });
   });
 }
@@ -184,7 +208,7 @@ function buildResolver(
         q.limit(args.limit || 1000).offset(args.offset || 0)
       );
     } else {
-      return loader(
+      return batchSelect(
         context[`_loader_map_${table}`] ||
           (context[`_loader_map_${table}`] = new Map()),
         table,
