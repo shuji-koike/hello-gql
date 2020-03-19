@@ -1,9 +1,11 @@
+directive @rev on FIELD_DEFINITION
+directive @table(schema: String, table: String) on FIELD_DEFINITION
+
 type Query {
-  rev: String
-  accounts: [Account]
-  campaign(uid: String, id: Int): Campaign
-  campaigns(limit: Int, offset: Int): [Campaign]
-  categories: [Category]
+  rev: String @rev
+  accounts: [Account] @table
+  campaigns(limit: Int, offset: Int): [Campaign] @table
+  categories(limit: Int, offset: Int): [Category] @table
 }
 
 type Account {
@@ -17,7 +19,7 @@ type Campaign {
   id: Int!
   uid: ID!
   name: String!
-  categories: [Category]
+  categories(limit: Int, offset: Int): [Category]
 }
 
 type Category {

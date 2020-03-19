@@ -1,6 +1,10 @@
 import express from "express";
 import * as graphql from "graphql";
-import { makeExecutableSchema } from "graphql-tools";
+import {
+  makeExecutableSchema,
+  buildSchemaFromTypeDefinitions,
+  addSchemaLevelResolveFunction
+} from "graphql-tools";
 import { ApolloServer } from "apollo-server-express";
 import mysql, { RowDataPacket } from "mysql2/promise";
 import { importSchema } from "graphql-import";
@@ -84,44 +88,61 @@ const typeDefs = importSchema("./schema.graphql", {});
 
 const resolvers = {
   Query: {
-    rev() {
-      return "test";
-    },
-    async accounts() {
-      const [rows] = await db.query("SELECT * FROM accounts");
-      return rows;
-    },
-    async campaigns(obj, args) {
-      Object.assign(args, { limit: 100, offset: 0 });
-      const [rows] = await db.query("SELECT * FROM campaigns");
-      return rows;
-    },
-    async categories(obj, args) {
-      const [rows] = await db.query("SELECT * FROM categories LIMIT 10");
-      return rows;
-    }
+    accounts: async () => select("accounts"),
+    campaigns: async () => select("campaigns"),
+    categories: async () => select("categories")
   },
   Account: {
-    async campaigns(obj, args) {
-      const [rows] = await db.query("SELECT * FROM campaigns");
-      return rows;
-    }
+    campaigns: async () => select("campaigns")
   },
   Campaign: {
-    async categories(obj, args) {
-      const [rows] = await db.query("SELECT * FROM categories LIMIT 10");
-      return rows;
-    }
+    categories: async () => select("categories")
   }
 };
 
+async function select(table: string, limit: number = 1000, offset: number = 0) {
+  const query = `SELECT * FROM ${table} LIMIT ${limit} OFFSET ${offset}`;
+  console.log(query);
+  const [rows] = await db.query(query);
+  return rows;
+}
+
+function buildSchema() {
+  const schema = buildSchemaFromTypeDefinitions(typeDefs);
+  const typeMap = schema.getQueryType();
+  const fields = typeMap.getFields();
+  Object.keys(fields).forEach(fieldName => {
+    if (fields[fieldName].resolve) return;
+    const directive = fields[fieldName].astNode.directives.find(
+      e => e.name.value == "table"
+    );
+    if (!directive) return;
+    let { type } = fields[fieldName];
+    if (type instanceof graphql.GraphQLList) {
+      type = type.ofType as graphql.GraphQLOutputType;
+    }
+    const table =
+      directive.arguments
+        .filter(e => e.name.value === "table")
+        .map(e => e.value.kind === "StringValue" && e.value.value)
+        .pop() || fieldName;
+    fields[fieldName].resolve = (obj, args, context, info) => {
+      console.log(type, obj, args);
+      return select(table, args.limit, args.offset);
+    };
+  });
+  addSchemaLevelResolveFunction(schema, (obj, args, context, info) => {
+    console.log(obj, args, context, info.path);
+  });
+  return schema;
+}
+
 (async function() {
-  const schema = true
-    ? new graphql.GraphQLSchema({ query: await getQuery() })
-    : makeExecutableSchema({
-        typeDefs,
-        resolvers
-      });
+  const schema = await [
+    () => buildSchema(),
+    async () => new graphql.GraphQLSchema({ query: await getQuery() }),
+    () => makeExecutableSchema({ typeDefs, resolvers })
+  ][0]();
   const app = express();
   const server = new ApolloServer({ schema });
   server.applyMiddleware({ app, path: "/graphql" });
