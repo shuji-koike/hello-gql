@@ -111,7 +111,7 @@ const resolvers = {
 
 async function select(
   table: string,
-  ...fn: ((e: Knex.QueryBuilder) => Knex.QueryBuilder)[]
+  ...fn: ((q: Knex.QueryBuilder) => Knex.QueryBuilder)[]
 ) {
   let select = knex.select().from(table);
   fn.filter(x => x).forEach(fn => (select = fn(select)));
@@ -123,6 +123,30 @@ async function select(
   console.log(query);
   const [rows] = await db.query<RowDataPacket[]>(query);
   return rows;
+}
+
+async function loader<Row, Key = number | string>(
+  map: Map<Key, { resolved?: boolean; resolve: (x: Row) => void; row?: Row }>,
+  table: string,
+  column: string,
+  key: Key
+): Promise<Row> {
+  if (map.has(key) && map.get(key).resolved === true) return map.get(key).row;
+  return new Promise<Row>(resolve => {
+    map.set(key, { resolve });
+    setTimeout(async () => {
+      if (map.get(key).resolved !== undefined) return;
+      map.forEach(v => (v.resolved = false));
+      const keys = Array.from(map.keys());
+      const rows = await select(table, q => q.whereIn(column, keys));
+      keys.forEach(e => {
+        const memo = map.get(e);
+        memo.resolved = true;
+        memo.row = rows.find(e => e[column] == key);
+        memo.resolve(memo.row);
+      });
+    });
+  });
 }
 
 function buildSchema() {
@@ -155,16 +179,18 @@ function buildResolver(
   if (!directive) return;
   const table = getDirectiveValue(directive, "table") || fieldName;
   field.resolve = (obj, args, context, info) => {
-    console.log(fieldName, args);
     if (field.type instanceof graphql.GraphQLList) {
-      return select(table, s =>
-        s.limit(args.limit || 1000).offset(args.offset || 0)
+      return select(table, q =>
+        q.limit(args.limit || 1000).offset(args.offset || 0)
       );
     } else {
-      return select(
+      return loader(
+        context[`_loader_map_${table}`] ||
+          (context[`_loader_map_${table}`] = new Map()),
         table,
-        s => s.where({ id: obj[`${fieldName}_id`] }) //TODO
-      ).then(e => e.shift());
+        "id",
+        obj[`${fieldName}_id`]
+      );
     }
   };
 }
