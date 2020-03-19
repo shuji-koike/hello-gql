@@ -133,31 +133,9 @@ function buildSchema() {
     const type = typeMap[typeName];
     if (type instanceof graphql.GraphQLObjectType) {
       const fields = type.getFields();
-      Object.keys(fields).forEach(fieldName => {
-        if (fields[fieldName].resolve) return;
-        const directive = fields[fieldName].astNode.directives.find(e =>
-          ["table", "belongsTo"].includes(e.name.value)
-        );
-        if (!directive) return;
-        const table =
-          directive.arguments
-            .filter(e => e.name.value === "table")
-            .map(e => e.value.kind === "StringValue" && e.value.value)
-            .pop() || fieldName;
-        fields[fieldName].resolve = (obj, args, context, info) => {
-          console.log(fieldName, args);
-          if (fields[fieldName].type instanceof graphql.GraphQLList) {
-            return select(table, s =>
-              s.limit(args.limit || 1000).offset(args.offset || 0)
-            );
-          } else {
-            return select(
-              table,
-              s => s.where({ id: obj[`${fieldName}_id`] }) //TODO
-            ).then(e => e.shift());
-          }
-        };
-      });
+      Object.keys(fields).forEach(fieldName =>
+        buildResolver(fieldName, fields[fieldName])
+      );
     }
   });
   addSchemaLevelResolveFunction(schema, (obj, args, context, info) => {
@@ -166,11 +144,46 @@ function buildSchema() {
   return schema;
 }
 
+function buildResolver(
+  fieldName: string,
+  field: graphql.GraphQLField<any, any, any>
+) {
+  if (field.resolve) return;
+  const directive = field.astNode.directives.find(e =>
+    ["table", "belongsTo"].includes(e.name.value)
+  );
+  if (!directive) return;
+  const table = getDirectiveValue(directive, "table") || fieldName;
+  field.resolve = (obj, args, context, info) => {
+    console.log(fieldName, args);
+    if (field.type instanceof graphql.GraphQLList) {
+      return select(table, s =>
+        s.limit(args.limit || 1000).offset(args.offset || 0)
+      );
+    } else {
+      return select(
+        table,
+        s => s.where({ id: obj[`${fieldName}_id`] }) //TODO
+      ).then(e => e.shift());
+    }
+  };
+}
+
+function getDirectiveValue(
+  directive: graphql.DirectiveNode,
+  name: string
+): string | undefined {
+  return directive.arguments
+    .filter(e => e.name.value === name)
+    .map(e => e.value.kind === "StringValue" && e.value.value)
+    .pop();
+}
+
 (async function() {
   const schema = await [
-    () => buildSchema(),
+    async () => buildSchema(),
     async () => new graphql.GraphQLSchema({ query: await getQuery() }),
-    () => makeExecutableSchema({ typeDefs, resolvers })
+    async () => makeExecutableSchema({ typeDefs, resolvers })
   ][0]();
   const app = express();
   const server = new ApolloServer({ schema });
