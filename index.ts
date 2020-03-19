@@ -109,11 +109,17 @@ const resolvers = {
   }
 };
 
-async function select(table: string, limit: number = 1000, offset: number = 0) {
+async function select(
+  table: string,
+  ...fn: ((e: Knex.QueryBuilder) => Knex.QueryBuilder)[]
+) {
+  let select = knex.select().from(table);
+  fn.filter(x => x).forEach(fn => (select = fn(select)));
   if ([true, false][0]) {
-    return await knex.select().from(table);
+    console.log(select.toString());
+    return await select;
   }
-  const query = `SELECT * FROM ${table} LIMIT ${limit} OFFSET ${offset}`;
+  const query = `SELECT * FROM ${table}`;
   console.log(query);
   const [rows] = await db.query<RowDataPacket[]>(query);
   return rows;
@@ -139,11 +145,16 @@ function buildSchema() {
             .map(e => e.value.kind === "StringValue" && e.value.value)
             .pop() || fieldName;
         fields[fieldName].resolve = (obj, args, context, info) => {
-          console.log(fields[fieldName].type, obj, args);
+          console.log(fieldName, args);
           if (fields[fieldName].type instanceof graphql.GraphQLList) {
-            return select(table, args.limit, args.offset);
+            return select(table, s =>
+              s.limit(args.limit || 1000).offset(args.offset || 0)
+            );
           } else {
-            return select(table, 1, 0).then(e => e.shift());
+            return select(
+              table,
+              s => s.where({ id: obj[`${fieldName}_id`] }) //TODO
+            ).then(e => e.shift());
           }
         };
       });
