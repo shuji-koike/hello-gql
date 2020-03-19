@@ -182,6 +182,38 @@ async function batch<Key, Row>(
   });
 }
 
+async function batch2<Key, Value>(keys: Key[], key: Key, fn: (keys: Key[]) => Promise<Value>) {
+  if (!keys.includes(key)) keys.push(key);
+  return new Promise<Value>(resolve => {
+    setTimeout(async () => {
+      const copy = keys.slice();
+      if (copy.length > 0) {
+        resolve(fn(copy));
+        keys.length = 0;
+      }
+    });
+  });
+}
+
+class BatchLoader<Key, Row> {
+  private keys: Key[] = [];
+  private rows: Row[] = [];
+  private callbacks: ((rows: Row[]) => void)[] = [];
+  load(key: Key, load: (keys: Key[]) => Promise<Row[]>): Promise<Row[]> {
+    this.keys.push(key);
+    return new Promise(resolve => {
+      this.callbacks.push(resolve);
+      setTimeout(async () => {
+        if (this.keys.length == 0) return;
+        const keys = this.keys.slice();
+        this.keys.length = 0;
+        (await load(keys)).forEach(e => this.rows.push(e));
+        this.callbacks.forEach(e => e(this.rows));
+      });
+    });
+  }
+}
+
 function buildSchema() {
   const schema = buildSchemaFromTypeDefinitions(typeDefs);
   const typeMap = schema.getTypeMap();
@@ -190,9 +222,7 @@ function buildSchema() {
     const type = typeMap[typeName];
     if (type instanceof graphql.GraphQLObjectType) {
       const fields = type.getFields();
-      Object.keys(fields).forEach(fieldName =>
-        buildResolver(fieldName, fields[fieldName])
-      );
+      Object.keys(fields).forEach(fieldName => buildResolver(fieldName, fields[fieldName]));
     }
   });
   addSchemaLevelResolveFunction(schema, (obj, args, context, info) => {
@@ -201,36 +231,40 @@ function buildSchema() {
   return schema;
 }
 
-function buildResolver(
-  fieldName: string,
-  field: graphql.GraphQLField<any, any, any>
-) {
+function buildResolver(fieldName: string, field: graphql.GraphQLField<any, any, any>) {
   if (field.resolve) return;
   const directive = field.astNode.directives.find(e =>
-    ["table", "belongsTo"].includes(e.name.value)
+    ["table", "belongsTo", "hasMany"].includes(e.name.value)
   );
   if (!directive) return;
   const table = getDirectiveValue(directive, "table") || fieldName;
   const primaryKey = getDirectiveValue(directive, "key") || "id";
-  const foreignKey = getDirectiveValue(directive, "on") || `${fieldName}_id`;
-  const dataloader = new Dataloader(keys =>
-    select(table, q => q.whereIn(primaryKey, keys))
-  );
+  const foreignKey = getDirectiveValue(directive, "foreignKey") || `${fieldName}_id`;
   field.resolve = (obj, args, context, info) => {
+    const loader = (function getLoader() {
+      if (!context["_loader"]) context["_loader"] = new Map();
+      if (context["_loader"].has(field)) return context["_loader"].get(field) as typeof loader;
+      const loader = {
+        dataloader: new Dataloader(keys => select(table, q => q.whereIn(primaryKey, keys))),
+        batchLoader: new BatchLoader()
+      };
+      context["_loader"].set(field, loader);
+      return loader;
+    })();
     if (field.type instanceof graphql.GraphQLList) {
-      return select(table, q =>
-        q.limit(args.limit || 1000).offset(args.offset || 0)
-      );
+      if (directive.name.value == "hasMany") {
+        return loader.batchLoader
+          .load(obj[primaryKey], keys => select(table, q => q.whereIn(foreignKey, keys)))
+          .then(rows => rows.filter(row => row[foreignKey] == obj[primaryKey]));
+      }
+      return select(table, q => q.limit(args.limit || 1000).offset(args.offset || 0));
     } else {
-      return dataloader.load(obj[foreignKey]);
+      return loader.dataloader.load(obj[foreignKey]);
     }
   };
 }
 
-function getDirectiveValue(
-  directive: graphql.DirectiveNode,
-  name: string
-): string | undefined {
+function getDirectiveValue(directive: graphql.DirectiveNode, name: string): string | undefined {
   return directive.arguments
     .filter(e => e.name.value === name)
     .map(e => e.value.kind === "StringValue" && e.value.value)

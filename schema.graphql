@@ -1,11 +1,11 @@
 directive @rev on FIELD_DEFINITION
 directive @table(table: String) on FIELD_DEFINITION
 directive @belongsTo(table: String) on FIELD_DEFINITION
+directive @hasMany(table: String, foreignKey: String) on FIELD_DEFINITION
 
 type Query {
   rev: String @rev
   accounts(limit: Int, offset: Int): [Account] @table
-  accounts2(limit: Int, offset: Int): [Account] @table(table: "accounts")
   roles(limit: Int, offset: Int): [Role] @table
   campaigns(limit: Int, offset: Int): [Campaign] @table
   categories(limit: Int, offset: Int): [Category] @table
@@ -26,6 +26,18 @@ type Role {
   name: String!
   owner_id: Int!
   version_no: Int!
+  authorities: [Authority] @hasMany(table: "role_authorities", foreignKey: "role_id")
+}
+
+type Authority {
+  resource: String!
+  action: AuthorityAction!
+  role_id: Int!
+}
+
+enum AuthorityAction {
+  view
+  edit
 }
 
 type Campaign {
