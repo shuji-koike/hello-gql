@@ -1,10 +1,9 @@
-directive @rev on FIELD_DEFINITION
+directive @hidden on FIELD_DEFINITION
 directive @table(table: String) on FIELD_DEFINITION
-directive @belongsTo(table: String) on FIELD_DEFINITION
+directive @belongsTo(table: String, primaryKey: String, foreignKey: String) on FIELD_DEFINITION
 directive @hasMany(table: String, foreignKey: String) on FIELD_DEFINITION
 
 type Query {
-  rev: String @rev
   accounts(limit: Int, offset: Int): [Account] @table
   roles(limit: Int, offset: Int): [Role] @table
   campaigns(limit: Int, offset: Int): [Campaign] @table
@@ -14,7 +13,14 @@ type Query {
 type Account {
   id: Int!
   uid: ID!
-  name: String
+  name: String!
+  account: String!
+  password: String @hidden
+  email_address: String
+  id_as_organization: Int
+  organization: Account @belongsTo(table: "accounts", foreignKey: "id_as_organization")
+  id_as_group: Int
+  group: Account @belongsTo(table: "accounts", foreignKey: "id_as_group")
   role_id: Int!
   role: Role! @belongsTo(table: "roles")
   campaigns(limit: Int, offset: Int): [Campaign]
@@ -46,10 +52,25 @@ type Campaign {
   name: String!
   owner_id: Int!
   owner: Account! @belongsTo(table: "accounts")
-  categories(limit: Int, offset: Int): [Category]
+  sales_account_id: Int
+  sales_account: Account @belongsTo(table: "accounts")
+  operations_account_id: Int
+  operations_account: Account @belongsTo(table: "accounts")
+  categories: [CampaignsCategories]
+    @hasMany(table: "campaigns_categories", foreignKey: "campaign_id")
+}
+
+type CampaignsCategories {
+  campaign_id: Int!
+  campaign: Campaign @belongsTo(table: "campaigns")
+  category_id: Int!
+  category: Category @belongsTo(table: "categories")
 }
 
 type Category {
   id: Int!
   name: String!
+  is_adult: Boolean!
+  upper_category_id: Int
+  middle_category_id: Int
 }

@@ -1,5 +1,5 @@
 import * as graphql from "graphql";
-import { buildSchemaFromTypeDefinitions, addSchemaLevelResolveFunction } from "graphql-tools";
+import { buildSchemaFromTypeDefinitions } from "graphql-tools";
 import { importSchema } from "graphql-import";
 import express from "express";
 import { ApolloServer } from "apollo-server-express";
@@ -19,7 +19,7 @@ async function select<T>(
   ...fn: ((q: Knex.QueryBuilder) => Knex.QueryBuilder)[]
 ): Promise<T[]> {
   let select = knex.select().from(table);
-  fn.filter(x => x).forEach(fn => (select = fn(select)));
+  fn.forEach(fn => (select = fn ? fn(select) : select));
   console.debug(select.toString());
   return select;
 }
@@ -55,28 +55,22 @@ function buildSchema() {
       Object.keys(fields).forEach(fieldName => buildResolver(fieldName, fields[fieldName]));
     }
   });
-  addSchemaLevelResolveFunction(schema, (obj, args, context, info) => {
-    // console.log(obj, args, context, info.path);
-  });
   return schema;
 }
 
-function sortForDataloader<Key, Row>(
-  primaryKey: string,
-  keys: readonly Key[],
-  rows: readonly Row[]
-): (Row | null)[] {
-  return keys.map(key => rows.find(e => e[primaryKey] == key) || null);
-}
-
 function buildResolver(fieldName: string, field: graphql.GraphQLField<any, any, any>) {
+  if (field.astNode?.directives.find(e => e.name.value == "hidden")) {
+    field.resolve = () => {
+      throw new Error("Forbidden accesss on @hidden field");
+    };
+  }
   if (field.resolve) return;
   const directive = field.astNode.directives.find(e =>
     ["table", "belongsTo", "hasMany"].includes(e.name.value)
   );
   if (!directive) return;
   const table = getDirectiveValue(directive, "table") || fieldName;
-  const primaryKey = getDirectiveValue(directive, "key") || "id";
+  const primaryKey = getDirectiveValue(directive, "primaryKey") || "id";
   const foreignKey = getDirectiveValue(directive, "foreignKey") || `${fieldName}_id`;
   field.resolve = (obj, args, context, info) => {
     const loader = (function getLoader() {
@@ -100,10 +94,18 @@ function buildResolver(fieldName: string, field: graphql.GraphQLField<any, any, 
       return select(table, q => q.limit(args.limit || 1000).offset(args.offset || 0));
     } else {
       if (directive.name.value == "belongsTo") {
-        return loader.dataloader.load(obj[foreignKey]);
+        return obj[foreignKey] && loader.dataloader.load(obj[foreignKey]);
       }
     }
   };
+}
+
+function sortForDataloader<Key, Row>(
+  primaryKey: string,
+  keys: readonly Key[],
+  rows: readonly Row[]
+): (Row | null)[] {
+  return keys.map(key => rows.find(e => e[primaryKey] == key) || null);
 }
 
 function getDirectiveValue(directive: graphql.DirectiveNode, name: string): string | undefined {
