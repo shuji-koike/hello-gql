@@ -231,6 +231,14 @@ function buildSchema() {
   return schema;
 }
 
+function sortForDataloader<Key, Row>(
+  primaryKey: string,
+  keys: readonly Key[],
+  rows: readonly Row[]
+): (Row | null)[] {
+  return keys.map(key => rows.find(e => e[primaryKey] == key) || null);
+}
+
 function buildResolver(fieldName: string, field: graphql.GraphQLField<any, any, any>) {
   if (field.resolve) return;
   const directive = field.astNode.directives.find(e =>
@@ -243,12 +251,14 @@ function buildResolver(fieldName: string, field: graphql.GraphQLField<any, any, 
   field.resolve = (obj, args, context, info) => {
     const loader = (function getLoader() {
       if (!context["_loader"]) context["_loader"] = new Map();
-      if (context["_loader"].has(field)) return context["_loader"].get(field) as typeof loader;
+      if (context["_loader"].has(table)) return context["_loader"].get(table) as typeof loader;
       const loader = {
-        dataloader: new Dataloader(keys => select(table, q => q.whereIn(primaryKey, keys))),
+        dataloader: new Dataloader(async keys =>
+          sortForDataloader(primaryKey, keys, await select(table, q => q.whereIn(primaryKey, keys)))
+        ),
         batchLoader: new BatchLoader()
       };
-      context["_loader"].set(field, loader);
+      context["_loader"].set(table, loader);
       return loader;
     })();
     if (field.type instanceof graphql.GraphQLList) {
@@ -259,7 +269,9 @@ function buildResolver(fieldName: string, field: graphql.GraphQLField<any, any, 
       }
       return select(table, q => q.limit(args.limit || 1000).offset(args.offset || 0));
     } else {
-      return loader.dataloader.load(obj[foreignKey]);
+      if (directive.name.value == "belongsTo") {
+        return loader.dataloader.load(obj[foreignKey]);
+      }
     }
   };
 }

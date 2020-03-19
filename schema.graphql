@@ -44,6 +44,8 @@ type Campaign {
   id: Int!
   uid: ID!
   name: String!
+  owner_id: Int!
+  owner: Account! @belongsTo(table: "accounts")
   categories(limit: Int, offset: Int): [Category]
 }
 
