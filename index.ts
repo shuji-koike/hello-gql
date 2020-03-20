@@ -7,10 +7,6 @@ import Knex from "knex";
 import { authorize } from "./auth";
 import { Loader } from "./loader";
 
-interface Record {
-  [k: string]: unknown;
-}
-
 function buildSchema() {
   const typeDefs = importSchema("./schema.graphql", {});
   const schema = buildSchemaFromTypeDefinitions(typeDefs);
@@ -53,15 +49,14 @@ function buildResolver(
     const loader = (function getLoader() {
       if (!context["_loader"]) context["_loader"] = new Map();
       if (context["_loader"].has(table))
-        return context["_loader"].get(table) as typeof loader;
-      const loader: Loader<number, Record> = new Loader(knex, async keys => {
-        const rows = await loader.select(table, auth, q =>
-          q.whereIn(primaryKey, keys)
-        );
-        return keys.map(
-          key => rows.find(row => row[primaryKey] == key) || null
-        );
-      });
+        return context["_loader"].get(table) as Loader;
+      const loader: Loader = new Loader(knex, async keys =>
+        loader
+          .select(table, auth, q => q.whereIn(primaryKey, keys))
+          .then(rows =>
+            keys.map(key => rows.find(row => row[primaryKey] == key) || null)
+          )
+      );
       context["_loader"].set(table, loader);
       return loader;
     })();

@@ -1,7 +1,7 @@
 import Knex from "knex";
 import Dataloader, { BatchLoadFn } from "dataloader";
 
-export class Loader<Key, Row> {
+export class Loader<Key = any, Row = any> {
   private keys: Key[] = [];
   private rows: Row[] = [];
   private callbacks: ((rows: Row[]) => void)[] = [];
