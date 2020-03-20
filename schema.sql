@@ -26,13 +26,3 @@ JOIN (
 )
 ORDER BY accounts.id, owners.id
 ;
-/*
-SELECT * FROM campaigns
-WHERE owner_id IN (
-  SELECT owner_id FROM auth
-  WHERE account_id = 6
-  AND resource = 'campaigns'
-  AND action IN ('view', 'edit')
-);
-SELECT FOUND_ROWS();
-*/

@@ -30,7 +30,6 @@ class BatchLoader<Key, Row> {
   private rows: Row[] = [];
   private callbacks: ((rows: Row[]) => void)[] = [];
   load(key: Key, load: (keys: Key[]) => Promise<Row[]>): Promise<Row[]> {
-    let a: undefined;
     this.keys.push(key);
     return new Promise(resolve => {
       this.callbacks.push(resolve);

@@ -21,7 +21,8 @@ directive @hasMany(
 ) on FIELD_DEFINITION
 
 type Query {
-  accounts(limit: Int, offset: Int): [Account] @table(table: "accounts", auth: "accounts")
+  accounts(limit: Int, offset: Int): [Account]
+    @table(table: "accounts", auth: "accounts")
   roles(limit: Int, offset: Int): [Role] @table(table: "roles", auth: "roles")
   campaigns(limit: Int, offset: Int): [Campaign]
     @table(table: "campaigns", auth: "campaigns", ownerKey: "owner_id")
@@ -37,9 +38,14 @@ type Account {
   email_address: String
   id_as_organization: Int
   organization: Account
-    @belongsTo(table: "accounts", foreignKey: "id_as_organization", auth: "accounts")
+    @belongsTo(
+      table: "accounts"
+      foreignKey: "id_as_organization"
+      auth: "accounts"
+    )
   id_as_group: Int
-  group: Account @belongsTo(table: "accounts", foreignKey: "id_as_group", auth: "accounts")
+  group: Account
+    @belongsTo(table: "accounts", foreignKey: "id_as_group", auth: "accounts")
   role_id: Int!
   role: Role! @belongsTo(table: "roles")
   campaigns(limit: Int, offset: Int): [Campaign]
@@ -51,7 +57,8 @@ type Role {
   name: String!
   owner_id: Int!
   version_no: Int!
-  authorities: [Authority] @hasMany(table: "role_authorities", foreignKey: "role_id", auth: "roles")
+  authorities: [Authority]
+    @hasMany(table: "role_authorities", foreignKey: "role_id", auth: "roles")
 }
 
 type Authority {
