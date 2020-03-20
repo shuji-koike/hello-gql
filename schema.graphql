@@ -1,12 +1,12 @@
 directive @hidden on FIELD_DEFINITION
-directive @table(table: String) on FIELD_DEFINITION
+directive @table(table: String, auth: String) on FIELD_DEFINITION
 directive @belongsTo(table: String, primaryKey: String, foreignKey: String) on FIELD_DEFINITION
 directive @hasMany(table: String, foreignKey: String) on FIELD_DEFINITION
 
 type Query {
   accounts(limit: Int, offset: Int): [Account] @table
   roles(limit: Int, offset: Int): [Role] @table
-  campaigns(limit: Int, offset: Int): [Campaign] @table
+  campaigns(limit: Int, offset: Int): [Campaign] @table(table: "campaigns", auth: "campaigns")
   categories(limit: Int, offset: Int): [Category] @table
 }
 

@@ -10,7 +10,7 @@ const knex = Knex({
   client: "mysql2",
   connection: {
     user: "root",
-    database: "cirqua_csl"
+    database: "hello"
   }
 });
 
@@ -72,13 +72,32 @@ function buildResolver(fieldName: string, field: graphql.GraphQLField<any, any, 
   const table = getDirectiveValue(directive, "table") || fieldName;
   const primaryKey = getDirectiveValue(directive, "primaryKey") || "id";
   const foreignKey = getDirectiveValue(directive, "foreignKey") || `${fieldName}_id`;
+  const resource = getDirectiveValue(directive, "auth");
+  const auth =
+    resource &&
+    ((q: Knex.QueryBuilder) =>
+      q.whereIn(
+        "owner_id",
+        knex
+          .select("owner_id")
+          .from("auth")
+          .where({
+            account_id: 1,
+            resource
+          })
+          .whereIn("action", ["view", "edit"])
+      ));
   field.resolve = (obj, args, context, info) => {
     const loader = (function getLoader() {
       if (!context["_loader"]) context["_loader"] = new Map();
       if (context["_loader"].has(table)) return context["_loader"].get(table) as typeof loader;
       const loader = {
         dataloader: new Dataloader(async keys =>
-          sortForDataloader(primaryKey, keys, await select(table, q => q.whereIn(primaryKey, keys)))
+          sortForDataloader(
+            primaryKey,
+            keys,
+            await select(table, auth, q => q.whereIn(primaryKey, keys))
+          )
         ),
         batchLoader: new BatchLoader()
       };
@@ -88,10 +107,10 @@ function buildResolver(fieldName: string, field: graphql.GraphQLField<any, any, 
     if (field.type instanceof graphql.GraphQLList) {
       if (directive.name.value == "hasMany") {
         return loader.batchLoader
-          .load(obj[primaryKey], keys => select(table, q => q.whereIn(foreignKey, keys)))
+          .load(obj[primaryKey], keys => select(table, auth, q => q.whereIn(foreignKey, keys)))
           .then(rows => rows.filter(row => row[foreignKey] == obj[primaryKey]));
       }
-      return select(table, q => q.limit(args.limit || 1000).offset(args.offset || 0));
+      return select(table, auth, q => q.limit(args.limit || 1000).offset(args.offset || 0));
     } else {
       if (directive.name.value == "belongsTo") {
         return obj[foreignKey] && loader.dataloader.load(obj[foreignKey]);
