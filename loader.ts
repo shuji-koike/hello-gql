@@ -6,17 +6,10 @@ export class Loader<Key, Row> {
   private rows: Row[] = [];
   private callbacks: ((rows: Row[]) => void)[] = [];
   private knex: Knex;
-  dataloader: Dataloader<Key, Row>;
-  constructor(
-    knex: Knex,
-    load: (keys: readonly Key[]) => Promise<Row[]>,
-    find: (key: Key, rows: Row[]) => Row
-  ) {
+  dataloader: Dataloader<Key, Row | null>;
+  constructor(knex: Knex, batchLoadFn: BatchLoadFn<Key, Row | null>) {
     this.knex = knex;
-    this.dataloader = new Dataloader(async keys => {
-      const rows = await load(keys);
-      return keys.map(key => find(key, rows));
-    });
+    this.dataloader = new Dataloader(batchLoadFn);
   }
   async select(
     table: string,
