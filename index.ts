@@ -55,13 +55,18 @@ function buildSchema() {
     const type = typeMap[typeName];
     if (type instanceof graphql.GraphQLObjectType) {
       const fields = type.getFields();
-      Object.keys(fields).forEach(fieldName => buildResolver(fieldName, fields[fieldName]));
+      Object.keys(fields).forEach(fieldName =>
+        buildResolver(fieldName, fields[fieldName])
+      );
     }
   });
   return schema;
 }
 
-function buildResolver(fieldName: string, field: graphql.GraphQLField<any, any, any>) {
+function buildResolver(
+  fieldName: string,
+  field: graphql.GraphQLField<any, any, any>
+) {
   if (field.astNode?.directives?.find(e => e.name.value == "hidden")) {
     field.resolve = () => {
       throw new Error("Forbidden accesss on @hidden field");
@@ -74,14 +79,16 @@ function buildResolver(fieldName: string, field: graphql.GraphQLField<any, any, 
   if (!directive) return;
   const table = getDirectiveValue(directive, "table") || fieldName;
   const primaryKey = getDirectiveValue(directive, "primaryKey") || "id";
-  const foreignKey = getDirectiveValue(directive, "foreignKey") || `${fieldName}_id`;
+  const foreignKey =
+    getDirectiveValue(directive, "foreignKey") || `${fieldName}_id`;
   const resource = getDirectiveValue(directive, "auth");
   const ownerKey = getDirectiveValue(directive, "ownerKey");
   const auth = authorize({ account_id: 1, resource, ownerKey });
   field.resolve = (obj, args, context, info) => {
     const loader = (function getLoader() {
       if (!context["_loader"]) context["_loader"] = new Map();
-      if (context["_loader"].has(table)) return context["_loader"].get(table) as typeof loader;
+      if (context["_loader"].has(table))
+        return context["_loader"].get(table) as typeof loader;
       const loader = {
         dataloader: new Dataloader(async keys =>
           sortForDataloader(
@@ -98,10 +105,16 @@ function buildResolver(fieldName: string, field: graphql.GraphQLField<any, any, 
     if (field.type instanceof graphql.GraphQLList) {
       if (directive.name.value == "hasMany") {
         return loader.batchLoader
-          .load(obj[primaryKey], keys => select(table, auth, q => q.whereIn(foreignKey, keys)))
-          .then(rows => rows.filter((row: any) => row[foreignKey] == obj[primaryKey]));
+          .load(obj[primaryKey], keys =>
+            select(table, auth, q => q.whereIn(foreignKey, keys))
+          )
+          .then(rows =>
+            rows.filter((row: any) => row[foreignKey] == obj[primaryKey])
+          );
       }
-      return select(table, auth, q => q.limit(args.limit || 1000).offset(args.offset || 0));
+      return select(table, auth, q =>
+        q.limit(args.limit || 1000).offset(args.offset || 0)
+      );
     } else {
       if (directive.name.value == "belongsTo") {
         return obj[foreignKey] && loader.dataloader.load(obj[foreignKey]);
@@ -118,7 +131,10 @@ function sortForDataloader<Key, Row>(
   return keys.map(key => rows.find((row: any) => row[primaryKey] == key));
 }
 
-function getDirectiveValue(directive: graphql.DirectiveNode, name: string): string | undefined {
+function getDirectiveValue(
+  directive: graphql.DirectiveNode,
+  name: string
+): string | undefined {
   return directive.arguments
     ?.filter(e => e.name.value === name)
     ?.map(e => (e.value.kind === "StringValue" ? e.value.value : undefined))
