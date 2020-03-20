@@ -15,10 +15,10 @@ const knex = Knex({
   }
 });
 
-async function select<T>(
+async function select<Row>(
   table: string,
-  ...fn: ((q: Knex.QueryBuilder) => Knex.QueryBuilder)[]
-): Promise<T[]> {
+  ...fn: (((q: Knex.QueryBuilder) => Knex.QueryBuilder) | undefined)[]
+): Promise<Row[]> {
   let select = knex.select().from(table);
   fn.forEach(fn => (select = fn ? fn(select) : select));
   console.debug(select.toString());
@@ -30,15 +30,17 @@ class BatchLoader<Key, Row> {
   private rows: Row[] = [];
   private callbacks: ((rows: Row[]) => void)[] = [];
   load(key: Key, load: (keys: Key[]) => Promise<Row[]>): Promise<Row[]> {
+    let a: undefined;
     this.keys.push(key);
     return new Promise(resolve => {
       this.callbacks.push(resolve);
       setTimeout(async () => {
         if (this.keys.length == 0) return;
         const keys = this.keys.slice();
+        const callbacks = this.callbacks.slice();
         this.keys.length = 0;
         (await load(keys)).forEach(e => this.rows.push(e));
-        this.callbacks.forEach(e => e(this.rows));
+        callbacks.forEach(e => e(this.rows));
       });
     });
   }
@@ -60,13 +62,13 @@ function buildSchema() {
 }
 
 function buildResolver(fieldName: string, field: graphql.GraphQLField<any, any, any>) {
-  if (field.astNode?.directives.find(e => e.name.value == "hidden")) {
+  if (field.astNode?.directives?.find(e => e.name.value == "hidden")) {
     field.resolve = () => {
       throw new Error("Forbidden accesss on @hidden field");
     };
   }
   if (field.resolve) return;
-  const directive = field.astNode.directives.find(e =>
+  const directive = field.astNode?.directives?.find(e =>
     ["table", "belongsTo", "hasMany"].includes(e.name.value)
   );
   if (!directive) return;
@@ -97,7 +99,7 @@ function buildResolver(fieldName: string, field: graphql.GraphQLField<any, any, 
       if (directive.name.value == "hasMany") {
         return loader.batchLoader
           .load(obj[primaryKey], keys => select(table, auth, q => q.whereIn(foreignKey, keys)))
-          .then(rows => rows.filter(row => row[foreignKey] == obj[primaryKey]));
+          .then(rows => rows.filter((row: any) => row[foreignKey] == obj[primaryKey]));
       }
       return select(table, auth, q => q.limit(args.limit || 1000).offset(args.offset || 0));
     } else {
@@ -112,14 +114,14 @@ function sortForDataloader<Key, Row>(
   primaryKey: string,
   keys: readonly Key[],
   rows: readonly Row[]
-): (Row | null)[] {
-  return keys.map(key => rows.find(e => e[primaryKey] == key) || null);
+): (Row | undefined)[] {
+  return keys.map(key => rows.find((row: any) => row[primaryKey] == key));
 }
 
 function getDirectiveValue(directive: graphql.DirectiveNode, name: string): string | undefined {
   return directive.arguments
-    .filter(e => e.name.value === name)
-    .map(e => e.value.kind === "StringValue" && e.value.value)
+    ?.filter(e => e.name.value === name)
+    ?.map(e => (e.value.kind === "StringValue" ? e.value.value : undefined))
     .pop();
 }
 
