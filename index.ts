@@ -5,6 +5,7 @@ import express from "express";
 import { ApolloServer } from "apollo-server-express";
 import Knex from "knex";
 import Dataloader from "dataloader";
+import { authorize } from "./auth";
 
 const knex = Knex({
   client: "mysql2",
@@ -73,20 +74,7 @@ function buildResolver(fieldName: string, field: graphql.GraphQLField<any, any, 
   const primaryKey = getDirectiveValue(directive, "primaryKey") || "id";
   const foreignKey = getDirectiveValue(directive, "foreignKey") || `${fieldName}_id`;
   const resource = getDirectiveValue(directive, "auth");
-  const auth =
-    resource &&
-    ((q: Knex.QueryBuilder) =>
-      q.whereIn(
-        "owner_id",
-        knex
-          .select("owner_id")
-          .from("auth")
-          .where({
-            account_id: 1,
-            resource
-          })
-          .whereIn("action", ["view", "edit"])
-      ));
+  const auth = authorize({ account_id: 1, resource });
   field.resolve = (obj, args, context, info) => {
     const loader = (function getLoader() {
       if (!context["_loader"]) context["_loader"] = new Map();
