@@ -15,13 +15,14 @@ SELECT
 FROM accounts
 JOIN roles ON roles.id = accounts.role_id
 JOIN role_authorities ON role_authorities.role_id = roles.id
-JOIN (SELECT id, id_as_organization, id_as_group FROM accounts) AS owners ON (
-  CASE
-    WHEN accounts.account_type = 'all' THEN 1 = 1
-    WHEN accounts.account_type = 'organization' THEN accounts.id = owners.id OR accounts.id = owners.id_as_organization
-    WHEN accounts.account_type = 'account_group' THEN accounts.id = owners.id OR accounts.id = owners.id_as_group
-    ELSE accounts.id = owners.id
-    END
+JOIN (
+  SELECT id, id_as_organization, id_as_group FROM accounts) AS owners ON (
+    CASE
+      WHEN accounts.account_type = 'all' THEN 1 = 1
+      WHEN accounts.account_type = 'organization' THEN accounts.id = owners.id OR accounts.id = owners.id_as_organization
+      WHEN accounts.account_type = 'account_group' THEN accounts.id = owners.id OR accounts.id = owners.id_as_group
+      ELSE accounts.id = owners.id
+      END
 )
 ORDER BY accounts.id, owners.id
 ;

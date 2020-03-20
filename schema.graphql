@@ -1,12 +1,30 @@
 directive @hidden on FIELD_DEFINITION
-directive @table(table: String, auth: String) on FIELD_DEFINITION
-directive @belongsTo(table: String, primaryKey: String, foreignKey: String) on FIELD_DEFINITION
-directive @hasMany(table: String, foreignKey: String) on FIELD_DEFINITION
+directive @table(
+  table: String
+  primaryKey: String
+  auth: String
+  ownerKey: String
+) on FIELD_DEFINITION
+directive @belongsTo(
+  table: String
+  primaryKey: String
+  foreignKey: String
+  auth: String
+  ownerKey: String
+) on FIELD_DEFINITION
+directive @hasMany(
+  table: String
+  primaryKey: String
+  foreignKey: String
+  auth: String
+  ownerKey: String
+) on FIELD_DEFINITION
 
 type Query {
-  accounts(limit: Int, offset: Int): [Account] @table
-  roles(limit: Int, offset: Int): [Role] @table
-  campaigns(limit: Int, offset: Int): [Campaign] @table(table: "campaigns", auth: "campaigns")
+  accounts(limit: Int, offset: Int): [Account] @table(table: "accounts", auth: "accounts")
+  roles(limit: Int, offset: Int): [Role] @table(table: "roles", auth: "roles")
+  campaigns(limit: Int, offset: Int): [Campaign]
+    @table(table: "campaigns", auth: "campaigns", ownerKey: "owner_id")
   categories(limit: Int, offset: Int): [Category] @table
 }
 
@@ -18,9 +36,10 @@ type Account {
   password: String @hidden
   email_address: String
   id_as_organization: Int
-  organization: Account @belongsTo(table: "accounts", foreignKey: "id_as_organization")
+  organization: Account
+    @belongsTo(table: "accounts", foreignKey: "id_as_organization", auth: "accounts")
   id_as_group: Int
-  group: Account @belongsTo(table: "accounts", foreignKey: "id_as_group")
+  group: Account @belongsTo(table: "accounts", foreignKey: "id_as_group", auth: "accounts")
   role_id: Int!
   role: Role! @belongsTo(table: "roles")
   campaigns(limit: Int, offset: Int): [Campaign]
@@ -32,7 +51,7 @@ type Role {
   name: String!
   owner_id: Int!
   version_no: Int!
-  authorities: [Authority] @hasMany(table: "role_authorities", foreignKey: "role_id")
+  authorities: [Authority] @hasMany(table: "role_authorities", foreignKey: "role_id", auth: "roles")
 }
 
 type Authority {
@@ -51,11 +70,11 @@ type Campaign {
   uid: ID!
   name: String!
   owner_id: Int!
-  owner: Account! @belongsTo(table: "accounts")
+  owner: Account! @belongsTo(table: "accounts", auth: "accounts")
   sales_account_id: Int
-  sales_account: Account @belongsTo(table: "accounts")
+  sales_account: Account @belongsTo(table: "accounts", auth: "accounts")
   operations_account_id: Int
-  operations_account: Account @belongsTo(table: "accounts")
+  operations_account: Account @belongsTo(table: "accounts", auth: "accounts")
   categories: [CampaignsCategories]
     @hasMany(table: "campaigns_categories", foreignKey: "campaign_id")
 }

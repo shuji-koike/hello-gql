@@ -74,7 +74,8 @@ function buildResolver(fieldName: string, field: graphql.GraphQLField<any, any, 
   const primaryKey = getDirectiveValue(directive, "primaryKey") || "id";
   const foreignKey = getDirectiveValue(directive, "foreignKey") || `${fieldName}_id`;
   const resource = getDirectiveValue(directive, "auth");
-  const auth = authorize({ account_id: 1, resource });
+  const ownerKey = getDirectiveValue(directive, "ownerKey");
+  const auth = authorize({ account_id: 1, resource, ownerKey });
   field.resolve = (obj, args, context, info) => {
     const loader = (function getLoader() {
       if (!context["_loader"]) context["_loader"] = new Map();
