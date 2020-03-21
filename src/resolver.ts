@@ -1,48 +1,20 @@
 import * as graphql from "graphql";
-import { buildSchemaFromTypeDefinitions } from "graphql-tools";
-import { importSchema } from "graphql-import";
-import { authorize } from "./auth";
+import { authorize } from "../auth";
 import { Loader } from "./loader";
 
-export function buildSchema() {
-  const typeDefs = importSchema("./schema.graphql", {});
-  const schema = buildSchemaFromTypeDefinitions(typeDefs);
-  const typeMap = schema.getTypeMap();
-  Object.keys(typeMap).forEach(typeName => {
-    if (!(typeMap[typeName] instanceof graphql.GraphQLObjectType)) return;
-    const type = typeMap[typeName];
-    if (type instanceof graphql.GraphQLObjectType) {
-      const fields = type.getFields();
-      Object.keys(fields).forEach(fieldName =>
-        buildResolver(fieldName, fields[fieldName])
-      );
-    }
-  });
-  return schema;
-}
-
-function buildResolver(
-  fieldName: string,
-  field: graphql.GraphQLField<any, any, any>
+export function buildResolver(
+  field: graphql.GraphQLField<any, any>,
+  directive: graphql.DirectiveNode
 ) {
-  if (field.astNode?.directives?.find(e => e.name.value == "hidden")) {
-    field.resolve = () => {
-      throw new Error("Forbidden accesss on @hidden field");
-    };
-  }
   if (field.resolve) return;
-  const directive = field.astNode?.directives?.find(e =>
-    ["table", "belongsTo", "hasMany"].includes(e.name.value)
-  );
-  if (!directive) return;
-  const table = getDirectiveValue(directive, "table") || fieldName;
+  const table = getDirectiveValue(directive, "table") || field.name;
   const primaryKey = getDirectiveValue(directive, "primaryKey") || "id";
   const foreignKey =
-    getDirectiveValue(directive, "foreignKey") || `${fieldName}_id`;
+    getDirectiveValue(directive, "foreignKey") || `${field.name}_id`;
   const resource = getDirectiveValue(directive, "auth");
   const ownerKey = getDirectiveValue(directive, "ownerKey");
-  const auth = authorize({ account_id: 1, resource, ownerKey });
   field.resolve = (obj, args, context, info) => {
+    const auth = authorize({ account_id: 1, resource, ownerKey });
     const loader = (function getLoader() {
       if (!context["_loader"]) context["_loader"] = new Map();
       if (context["_loader"].has(table))
