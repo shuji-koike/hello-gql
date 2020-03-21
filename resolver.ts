@@ -1,11 +1,10 @@
-import Knex from "knex";
 import * as graphql from "graphql";
 import { buildSchemaFromTypeDefinitions } from "graphql-tools";
 import { importSchema } from "graphql-import";
 import { authorize } from "./auth";
 import { Loader } from "./loader";
 
-export function buildSchema(knex: Knex) {
+export function buildSchema() {
   const typeDefs = importSchema("./schema.graphql", {});
   const schema = buildSchemaFromTypeDefinitions(typeDefs);
   const typeMap = schema.getTypeMap();
@@ -15,7 +14,7 @@ export function buildSchema(knex: Knex) {
     if (type instanceof graphql.GraphQLObjectType) {
       const fields = type.getFields();
       Object.keys(fields).forEach(fieldName =>
-        buildResolver(knex, fieldName, fields[fieldName])
+        buildResolver(fieldName, fields[fieldName])
       );
     }
   });
@@ -23,7 +22,6 @@ export function buildSchema(knex: Knex) {
 }
 
 function buildResolver(
-  knex: Knex,
   fieldName: string,
   field: graphql.GraphQLField<any, any, any>
 ) {
@@ -49,7 +47,7 @@ function buildResolver(
       if (!context["_loader"]) context["_loader"] = new Map();
       if (context["_loader"].has(table))
         return context["_loader"].get(table) as Loader;
-      const loader: Loader = new Loader(knex, async keys =>
+      const loader: Loader = new Loader(context.knex, async keys =>
         loader
           .select(table, auth, q => q.whereIn(primaryKey, keys))
           .then(rows =>
